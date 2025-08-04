@@ -8,17 +8,26 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
+	_ "net/http/pprof"
 	"os/signal"
 	"slices"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/mascanio/uroboros/internal/generator/syslog"
 	"github.com/mascanio/uroboros/internal/receiver"
 	"github.com/mascanio/uroboros/internal/sender"
 )
 
 func main() {
+	// Start pprof server
+	go func() {
+		log.Println("pprof listening on :6060")
+		http.ListenAndServe(":6060", nil)
+	}()
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGKILL, syscall.SIGABRT)
 	defer cancel()
 
@@ -52,9 +61,11 @@ func main() {
 		}
 		defer sender.Close()
 
-		limitInputReader := io.LimitReader(&r{ctx}, 1<<33)
-		w := bufio.NewWriter(sender.Writer)
-		_, err = w.ReadFrom(limitInputReader)
+		// gen := io.LimitReader(&r{ctx}, 1<<20)
+		gen := syslog.NewSyslogGenerator(syslog.RFC5424, 100000000)
+		r := bufio.NewReaderSize(gen, 1<<14)
+		w := bufio.NewWriterSize(sender.Writer, 1<<14)
+		_, err = w.ReadFrom(r)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -92,7 +103,7 @@ func consumer(wg *sync.WaitGroup, conn net.Conn) {
 
 type r struct{ ctx context.Context }
 
-var repeated = slices.Repeat([]byte("a"), 1<<20)
+var repeated = slices.Repeat([]byte("a"), 1<<30)
 
 func (r *r) Read(p []byte) (n int, err error) {
 	select {
