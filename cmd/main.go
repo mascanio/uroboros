@@ -3,9 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
@@ -43,7 +41,7 @@ func main() {
 	defer cancelReceiver()
 	err := receiver.Start(receiverCtx, &wg, func(conn net.Conn) {
 		wg.Add(1)
-		go consumer(&wg, conn)
+		go consumerRFC(&wg, conn, syslog.RFC5424) // Change to RFC3164 to test BSD
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -92,7 +90,8 @@ func main() {
 	wg.Wait()
 }
 
-func consumer(wg *sync.WaitGroup, conn net.Conn) {
+// consumerRFC is a generic consumer for both RFCs
+func consumerRFC(wg *sync.WaitGroup, conn net.Conn, rfc syslog.Format) {
 	nRead := 0
 	lastNRead := 0
 	lastTime := time.Now()
@@ -101,22 +100,23 @@ func consumer(wg *sync.WaitGroup, conn net.Conn) {
 	defer log.Print("consumer done")
 	defer wg.Done()
 	defer conn.Close()
-	buf := make([]byte, 1<<12)
-	buffReader := bufio.NewReader(conn)
-	for {
-		n, readErr := buffReader.Read(buf)
-		nRead += n
-		if errors.Is(readErr, io.EOF) {
-			log.Print(ByteCountIEC(int64(nRead) - int64(lastNRead)))
-			log.Print("total read: ", ByteCountIEC(int64(nRead)))
-			return
-		}
+
+	scanner := bufio.NewScanner(conn)
+	scanner.Split(syslog.NewSyslogSplitFuncDelimiter([]byte("\n")))
+	for scanner.Scan() {
+		nRead += len(scanner.Bytes())
+		_ = syslog.ParseSyslogMessageRFC5424(scanner.Bytes())
+		// log.Printf("Received syslog message: %+v", parsed)
 		if time.Since(lastTime) > time.Second {
 			lastTime = time.Now()
 			log.Print(ByteCountIEC(int64(nRead) - int64(lastNRead)))
 			lastNRead = nRead
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		log.Printf("Scanner error: %v", err)
+	}
+	log.Print("total read: ", ByteCountIEC(int64(nRead)))
 }
 
 type r struct{ ctx context.Context }
