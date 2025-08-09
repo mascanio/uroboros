@@ -28,7 +28,12 @@ func main() {
 		http.ListenAndServe(":6060", nil)
 	}()
 
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGKILL, syscall.SIGABRT)
+	ctx, cancel := signal.NotifyContext(
+		context.Background(),
+		syscall.SIGINT,
+		syscall.SIGKILL,
+		syscall.SIGABRT,
+	)
 	defer cancel()
 
 	wg := sync.WaitGroup{}
@@ -48,6 +53,8 @@ func main() {
 	go func() {
 		defer log.Print("sender done")
 		defer wg.Done()
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
 		dialer := net.Dialer{}
 		sender, err := sender.NewTCPSender(ctx, sender.NewDialerRetry(
 			&dialer,
@@ -59,15 +66,26 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer sender.Close()
+		go func() {
+			defer sender.Close()
+			<-ctx.Done()
+		}()
 
 		// gen := io.LimitReader(&r{ctx}, 1<<20)
-		gen := syslog.NewSyslogGenerator(syslog.RFC5424, 100000000)
-		r := bufio.NewReaderSize(gen, 1<<14)
+		gen := syslog.NewSyslogGenerator(
+			syslog.RFC5424,
+			syslog.WithEndOfLine([]byte("\n")),
+		)
 		w := bufio.NewWriterSize(sender.Writer, 1<<14)
-		_, err = w.ReadFrom(r)
-		if err != nil {
-			log.Fatal(err)
+		defer w.Flush()
+		buf := make([]byte, 1<<10)
+		msg := []byte("This is a test syslog message ")
+		for range 10000000 {
+			_, err := gen.GenerateMessage(buf, time.Now(), msg)
+			if err != nil {
+				return
+			}
+			w.Write(buf)
 		}
 	}()
 
