@@ -32,17 +32,3 @@ func TestOptions_All(t *testing.T) {
 	require.Equal(t, "[sd@1 x=\"y\"]", g.structuredData)
 	require.Equal(t, []byte("EOL"), g.endOfLine)
 }
-
-func BenchmarkParseSyslogMessageRFC3164(b *testing.B) {
-	msg := []byte("<34>Oct 11 22:14:15 mymachine su: 'su root' failed for lonvick on /dev/pts/8")
-	for b.Loop() {
-		_ = ParseSyslogMessageRFC3164(msg)
-	}
-}
-
-func BenchmarkParseSyslogMessageRFC5424(b *testing.B) {
-	msg := []byte("<165>1 2003-10-11T22:14:15Z mymachine.example.com evntslog 1234 ID47 [exampleSDID@32473 iut=\"3\" eventSource=\"Application\" eventID=\"1011\"] BOMAn application event log entry...")
-	for b.Loop() {
-		_ = ParseSyslogMessageRFC5424(msg)
-	}
-}

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mascanio/uroboros/internal/generator/syslog"
+	syslogparser "github.com/mascanio/uroboros/internal/parser/syslog"
 	"github.com/mascanio/uroboros/internal/receiver"
 	"github.com/mascanio/uroboros/internal/sender"
 )
@@ -94,6 +95,8 @@ func main() {
 func consumerRFC(wg *sync.WaitGroup, conn net.Conn, rfc syslog.Format) {
 	nRead := 0
 	lastNRead := 0
+	nEvents := 0
+	lastNEvents := 0
 	lastTime := time.Now()
 
 	log.Print("consumer started")
@@ -105,18 +108,22 @@ func consumerRFC(wg *sync.WaitGroup, conn net.Conn, rfc syslog.Format) {
 	scanner.Split(syslog.NewSyslogSplitFuncDelimiter([]byte("\n")))
 	for scanner.Scan() {
 		nRead += len(scanner.Bytes())
-		_ = syslog.ParseSyslogMessageRFC5424(scanner.Bytes())
+		nEvents++
+		_ = syslogparser.ParseSyslogMessageRFC5424(scanner.Bytes())
 		// log.Printf("Received syslog message: %+v", parsed)
 		if time.Since(lastTime) > time.Second {
 			lastTime = time.Now()
-			log.Print(ByteCountIEC(int64(nRead) - int64(lastNRead)))
+			bytesPerSec := nRead - lastNRead
+			eventsPerSec := nEvents - lastNEvents
+			log.Printf("%s/s, %d events/s", ByteCountIEC(int64(bytesPerSec)), eventsPerSec)
 			lastNRead = nRead
+			lastNEvents = nEvents
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		log.Printf("Scanner error: %v", err)
 	}
-	log.Print("total read: ", ByteCountIEC(int64(nRead)))
+	log.Printf("total read: %s, total events: %d", ByteCountIEC(int64(nRead)), nEvents)
 }
 
 type r struct{ ctx context.Context }
