@@ -9,12 +9,11 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os/signal"
-	"slices"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/mascanio/uroboros/internal/generator/syslog"
+	"github.com/mascanio/uroboros/internal/event_generator/syslog"
 	syslogparser "github.com/mascanio/uroboros/internal/parser/syslog"
 	"github.com/mascanio/uroboros/internal/receiver"
 	"github.com/mascanio/uroboros/internal/sender"
@@ -37,17 +36,18 @@ func main() {
 
 	wg := sync.WaitGroup{}
 
-	receiver := receiver.NewTCPReceiver("localhost", "4444")
-	receiverCtx, cancelReceiver := context.WithCancel(ctx)
-	defer cancelReceiver()
-	err := receiver.Start(receiverCtx, &wg, func(conn net.Conn) {
-		wg.Add(1)
-		go consumerRFC(&wg, conn, syslog.RFC5424) // Change to RFC3164 to test BSD
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
+	setupReceivers(ctx, &wg, []receiverConfig{{
+		host:   "localhost",
+		port:   "4444",
+		format: syslog.RFC5424,
+	}})
 
+	setupSenders(ctx, &wg)
+
+	wg.Wait()
+}
+
+func setupSenders(ctx context.Context, wg *sync.WaitGroup) {
 	wg.Add(1)
 	go func() {
 		defer log.Print("sender done")
@@ -87,12 +87,35 @@ func main() {
 			w.Write(buf)
 		}
 	}()
+}
 
-	wg.Wait()
+type receiverConfig struct {
+	host, port string
+	format     syslog.Format
+}
+
+func setupReceivers(ctx context.Context, wg *sync.WaitGroup, cfg []receiverConfig) (context.CancelCauseFunc, error) {
+	allReceiverCtx, cancelReceivers := context.WithCancelCause(ctx)
+	for _, config := range cfg {
+		receiver := receiver.NewTCPReceiver(config.host, config.port)
+		receiverCtx := context.WithValue(allReceiverCtx, "host", config.host)
+		receiverCtx = context.WithValue(receiverCtx, "port", config.port)
+		err := receiver.Start(
+			receiverCtx,
+			wg,
+			func(ctx context.Context, conn net.Conn) {
+				consumerRFC(ctx, conn, config.format) // Change to RFC3164 to test BSD
+			})
+		if err != nil {
+			cancelReceivers(err)
+			return nil, err
+		}
+	}
+	return cancelReceivers, nil
 }
 
 // consumerRFC is a generic consumer for both RFCs
-func consumerRFC(wg *sync.WaitGroup, conn net.Conn, rfc syslog.Format) {
+func consumerRFC(ctx context.Context, conn net.Conn, rfc syslog.Format) {
 	nRead := 0
 	lastNRead := 0
 	nEvents := 0
@@ -101,7 +124,6 @@ func consumerRFC(wg *sync.WaitGroup, conn net.Conn, rfc syslog.Format) {
 
 	log.Print("consumer started")
 	defer log.Print("consumer done")
-	defer wg.Done()
 	defer conn.Close()
 
 	scanner := bufio.NewScanner(conn)
@@ -126,18 +148,18 @@ func consumerRFC(wg *sync.WaitGroup, conn net.Conn, rfc syslog.Format) {
 	log.Printf("total read: %s, total events: %d", ByteCountIEC(int64(nRead)), nEvents)
 }
 
-type r struct{ ctx context.Context }
-
-var repeated = slices.Repeat([]byte("a"), 1<<30)
-
-func (r *r) Read(p []byte) (n int, err error) {
-	select {
-	case <-r.ctx.Done():
-		return 0, context.Cause(r.ctx)
-	default:
-	}
-	return copy(p, repeated[:len(p)]), nil
-}
+// type r struct{ ctx context.Context }
+//
+// var repeated = slices.Repeat([]byte("a"), 1<<30)
+//
+// func (r *r) Read(p []byte) (n int, err error) {
+// 	select {
+// 	case <-r.ctx.Done():
+// 		return 0, context.Cause(r.ctx)
+// 	default:
+// 	}
+// 	return copy(p, repeated[:len(p)]), nil
+// }
 
 func ByteCountIEC(b int64) string {
 	const unit = 1024

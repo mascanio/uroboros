@@ -23,7 +23,7 @@ func NewTCPReceiver(host, port string) *tcpReceiver {
 func (c *tcpReceiver) Start(
 	ctx context.Context,
 	wg *sync.WaitGroup,
-	next func(conn net.Conn),
+	handleConn func(ctx context.Context, conn net.Conn),
 ) error {
 	lc := net.ListenConfig{}
 	l, err := lc.Listen(ctx, "tcp", net.JoinHostPort(c.host, c.port))
@@ -55,7 +55,11 @@ func (c *tcpReceiver) Start(
 				cancel(err)
 				return
 			}
-			next(conn)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				handleConn(ctx, conn)
+			}()
 		}
 	}()
 	return nil
