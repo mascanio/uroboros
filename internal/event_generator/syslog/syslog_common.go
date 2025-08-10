@@ -14,7 +14,7 @@ const (
 )
 
 type SyslogMessageGenerator interface {
-	GenerateMessage(p []byte, now time.Time, msg []byte) (int, error)
+	GenerateEvent(p []byte, now time.Time, msg []byte) (int, error)
 }
 
 type Option interface {

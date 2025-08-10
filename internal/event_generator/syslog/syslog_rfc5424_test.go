@@ -53,7 +53,7 @@ func TestSyslogGeneratorRFC5424(t *testing.T) {
 				WithEndOfLine([]byte(tc.eol)),
 			).(*SyslogGeneratorRFC5424)
 			buf := make([]byte, 512)
-			n, err := gen.GenerateMessage(buf, tc.fakeTime, []byte(tc.msg))
+			n, err := gen.GenerateEvent(buf, tc.fakeTime, []byte(tc.msg))
 			require.NoError(t, err)
 			out := buf[:n]
 			prefix := "<33>1 " + tc.fakeTime.UTC().Format("2006-01-02T15:04:05Z") + " " + tc.host + " " + tc.app + " " + tc.proc + " " + tc.msgid + " " + tc.sd + " "

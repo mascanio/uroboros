@@ -54,7 +54,7 @@ func TestSyslogGeneratorRFC3164(t *testing.T) {
 				WithEndOfLine([]byte(tc.eol)),
 			).(*SyslogGeneratorRFC3164)
 			buf := make([]byte, 256)
-			n, err := gen.GenerateMessage(buf, tc.fakeTime, []byte(tc.msg))
+			n, err := gen.GenerateEvent(buf, tc.fakeTime, []byte(tc.msg))
 			require.NoError(t, err)
 			out := buf[:n]
 			// Build expected prefix

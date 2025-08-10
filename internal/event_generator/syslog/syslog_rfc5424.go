@@ -18,7 +18,7 @@ type SyslogGeneratorRFC5424 struct {
 	endOfLine                     []byte
 }
 
-func (g *SyslogGeneratorRFC5424) GenerateMessage(p []byte, now time.Time, msg []byte) (int, error) {
+func (g *SyslogGeneratorRFC5424) GenerateEvent(p []byte, now time.Time, msg []byte) (int, error) {
 	if g.lastRFC5424TimestampUpdate.IsZero() {
 		g.lastRFC5424TimestampUpdate = now
 		g.lastRFC5424FormattedTimestamp = now.UTC().Format(time.RFC3339)

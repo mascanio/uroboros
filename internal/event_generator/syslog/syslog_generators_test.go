@@ -1,9 +1,10 @@
 package syslog
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSyslogGenerator_Table(t *testing.T) {
@@ -66,7 +67,7 @@ func TestSyslogGenerator_Table(t *testing.T) {
 				)
 			}
 			buf := make([]byte, 512)
-			n, err := gen.GenerateMessage(buf, tc.fakeTime, []byte(tc.msg))
+			n, err := gen.GenerateEvent(buf, tc.fakeTime, []byte(tc.msg))
 			require.NoError(t, err)
 			out := buf[:n]
 			require.Equal(t, tc.expected, string(out))

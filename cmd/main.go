@@ -15,8 +15,10 @@ import (
 
 	"github.com/mascanio/uroboros/internal/event_generator/syslog"
 	syslogparser "github.com/mascanio/uroboros/internal/parser/syslog"
+	payloadgenerator "github.com/mascanio/uroboros/internal/payload_generator"
 	"github.com/mascanio/uroboros/internal/receiver"
 	"github.com/mascanio/uroboros/internal/sender"
+	sequencegenerator "github.com/mascanio/uroboros/internal/sequence_generator"
 )
 
 func main() {
@@ -48,45 +50,55 @@ func main() {
 }
 
 func setupSenders(ctx context.Context, wg *sync.WaitGroup) {
-	wg.Add(1)
-	go func() {
-		defer log.Print("sender done")
-		defer wg.Done()
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
-		dialer := net.Dialer{}
-		sender, err := sender.NewTCPSender(ctx, sender.NewDialerRetry(
-			&dialer,
-			"tcp",
-			"localhost",
-			"4444",
-			sender.RetryNWait(33, 100*time.Millisecond),
-		))
-		if err != nil {
-			log.Fatal(err)
-		}
+	sequenceGenerator := sequencegenerator.NewSequenceGenerator(0, 10_000_000)
+	for range 1 {
+		wg.Add(1)
 		go func() {
-			defer sender.Close()
-			<-ctx.Done()
-		}()
-
-		// gen := io.LimitReader(&r{ctx}, 1<<20)
-		gen := syslog.NewSyslogGenerator(
-			syslog.RFC5424,
-			syslog.WithEndOfLine([]byte("\n")),
-		)
-		w := bufio.NewWriterSize(sender.Writer, 1<<14)
-		defer w.Flush()
-		buf := make([]byte, 1<<10)
-		msg := []byte("This is a test syslog message ")
-		for range 10000000 {
-			_, err := gen.GenerateMessage(buf, time.Now(), msg)
+			defer log.Print("sender done")
+			defer wg.Done()
+			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			dialer := net.Dialer{}
+			sender, err := sender.NewTCPSender(ctx, sender.NewDialerRetry(
+				&dialer,
+				"tcp",
+				"localhost",
+				"4444",
+				sender.RetryNWait(33, 100*time.Millisecond),
+			))
 			if err != nil {
-				return
+				log.Fatal(err)
 			}
-			w.Write(buf)
-		}
-	}()
+			go func() {
+				defer sender.Close()
+				<-ctx.Done()
+			}()
+
+			// gen := io.LimitReader(&r{ctx}, 1<<20)
+			gen := syslog.NewSyslogGenerator(
+				syslog.RFC5424,
+				syslog.WithEndOfLine([]byte("\n")),
+			)
+			payloadGenerator := payloadgenerator.NewIDMessageGenerator(
+				"This is a test syslog message",
+				sequenceGenerator,
+			)
+			w := bufio.NewWriterSize(sender.Writer, 1<<14)
+			defer w.Flush()
+			buf := make([]byte, 1<<10)
+			for {
+				msg := payloadGenerator.GenerateMessage()
+				if msg == nil {
+					return
+				}
+				_, err := gen.GenerateEvent(buf, time.Now(), msg)
+				if err != nil {
+					return
+				}
+				w.Write(buf)
+			}
+		}()
+	}
 }
 
 type receiverConfig struct {
@@ -94,7 +106,11 @@ type receiverConfig struct {
 	format     syslog.Format
 }
 
-func setupReceivers(ctx context.Context, wg *sync.WaitGroup, cfg []receiverConfig) (context.CancelCauseFunc, error) {
+func setupReceivers(
+	ctx context.Context,
+	wg *sync.WaitGroup,
+	cfg []receiverConfig,
+) (context.CancelCauseFunc, error) {
 	allReceiverCtx, cancelReceivers := context.WithCancelCause(ctx)
 	for _, config := range cfg {
 		receiver := receiver.NewTCPReceiver(config.host, config.port)
@@ -132,7 +148,8 @@ func consumerRFC(ctx context.Context, conn net.Conn, rfc syslog.Format) {
 		nRead += len(scanner.Bytes())
 		nEvents++
 		_ = syslogparser.ParseSyslogMessageRFC5424(scanner.Bytes())
-		// log.Printf("Received syslog message: %+v", parsed)
+		// parsed := syslogparser.ParseSyslogMessageRFC5424(scanner.Bytes())
+		// log.Printf("Received syslog message: %s", parsed.Msg)
 		if time.Since(lastTime) > time.Second {
 			lastTime = time.Now()
 			bytesPerSec := nRead - lastNRead
