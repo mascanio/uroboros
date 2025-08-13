@@ -1,9 +1,11 @@
 package syslog
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -66,11 +68,11 @@ func TestSyslogGenerator_Table(t *testing.T) {
 					WithEndOfLine([]byte(tc.eol)),
 				)
 			}
-			buf := make([]byte, 512)
+			buf := &bytes.Buffer{}
 			n, err := gen.GenerateEvent(buf, tc.fakeTime, []byte(tc.msg))
 			require.NoError(t, err)
-			out := buf[:n]
-			require.Equal(t, tc.expected, string(out))
+			assert.Equal(t, len(tc.expected), n)
+			require.Equal(t, tc.expected, buf.String())
 		})
 	}
 }

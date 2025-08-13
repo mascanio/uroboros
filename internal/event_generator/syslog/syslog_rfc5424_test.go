@@ -1,9 +1,11 @@
 package syslog
 
 import (
+	"bytes"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -52,13 +54,13 @@ func TestSyslogGeneratorRFC5424(t *testing.T) {
 				WithStructuredData(tc.sd),
 				WithEndOfLine([]byte(tc.eol)),
 			).(*SyslogGeneratorRFC5424)
-			buf := make([]byte, 512)
+			buf := &bytes.Buffer{}
 			n, err := gen.GenerateEvent(buf, tc.fakeTime, []byte(tc.msg))
 			require.NoError(t, err)
-			out := buf[:n]
 			prefix := "<33>1 " + tc.fakeTime.UTC().Format("2006-01-02T15:04:05Z") + " " + tc.host + " " + tc.app + " " + tc.proc + " " + tc.msgid + " " + tc.sd + " "
 			expected := prefix + tc.msg + tc.eol
-			require.Equal(t, expected, string(out))
+			assert.Equal(t, len(expected), n)
+			require.Equal(t, expected, buf.String())
 		})
 	}
 }

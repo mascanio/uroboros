@@ -1,6 +1,7 @@
 package syslog
 
 import (
+	"io"
 	"strconv"
 	"time"
 )
@@ -18,7 +19,7 @@ type SyslogGeneratorRFC5424 struct {
 	endOfLine                     []byte
 }
 
-func (g *SyslogGeneratorRFC5424) GenerateEvent(p []byte, now time.Time, msg []byte) (int, error) {
+func (g *SyslogGeneratorRFC5424) GenerateEvent(w io.Writer, now time.Time, msg []byte) (int, error) {
 	if g.lastRFC5424TimestampUpdate.IsZero() {
 		g.lastRFC5424TimestampUpdate = now
 		g.lastRFC5424FormattedTimestamp = now.UTC().Format(time.RFC3339)
@@ -28,13 +29,23 @@ func (g *SyslogGeneratorRFC5424) GenerateEvent(p []byte, now time.Time, msg []by
 		g.lastRFC5424FormattedTimestamp = now.UTC().Format(time.RFC3339)
 		copy(g.rfc5424Prefix[g.rfc5424TimestampOffset:], g.lastRFC5424FormattedTimestamp)
 	}
-	copy(p, g.rfc5424Prefix)
-	idx := len(g.rfc5424Prefix)
-	copy(p[idx:], msg)
-	idx += len(msg)
-	copy(p[idx:], g.endOfLine)
-	idx += len(g.endOfLine)
-	return idx, nil
+	nTotal := 0
+	n, err := w.Write(g.rfc5424Prefix)
+	nTotal += n
+	if err != nil {
+		return nTotal, err
+	}
+	n, err = w.Write(msg)
+	nTotal += n
+	if err != nil {
+		return nTotal, err
+	}
+	n, err = w.Write(g.endOfLine)
+	nTotal += n
+	if err != nil {
+		return nTotal, err
+	}
+	return nTotal, nil
 }
 
 // buildRFC5424Prefix returns the static prefix for RFC5424 (up to just before the timestamp)

@@ -1,6 +1,7 @@
 package syslog
 
 import (
+	"io"
 	"time"
 )
 
@@ -14,7 +15,7 @@ const (
 )
 
 type SyslogMessageGenerator interface {
-	GenerateEvent(p []byte, now time.Time, msg []byte) (int, error)
+	GenerateEvent(w io.Writer, now time.Time, msg []byte) (int, error)
 }
 
 type Option interface {

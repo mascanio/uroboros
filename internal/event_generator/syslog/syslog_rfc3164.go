@@ -1,6 +1,7 @@
 package syslog
 
 import (
+	"io"
 	"strconv"
 	"time"
 )
@@ -16,7 +17,7 @@ type SyslogGeneratorRFC3164 struct {
 	endOfLine                     []byte
 }
 
-func (g *SyslogGeneratorRFC3164) GenerateEvent(p []byte, now time.Time, msg []byte) (int, error) {
+func (g *SyslogGeneratorRFC3164) GenerateEvent(w io.Writer, now time.Time, msg []byte) (int, error) {
 	if g.lastRFC3164TimestampUpdate.IsZero() {
 		g.lastRFC3164TimestampUpdate = now
 		g.lastRFC3164FormattedTimestamp = now.Format("Jan _2 15:04:05")
@@ -26,15 +27,23 @@ func (g *SyslogGeneratorRFC3164) GenerateEvent(p []byte, now time.Time, msg []by
 		g.lastRFC3164FormattedTimestamp = now.Format("Jan _2 15:04:05")
 		copy(g.rfc3164Prefix[g.rfc3164TimestampOffset:], g.lastRFC3164FormattedTimestamp)
 	}
-	// Copy prefix (with cached timestamp)
-	copy(p, g.rfc3164Prefix)
-	idx := len(g.rfc3164Prefix)
-	// MSG
-	copy(p[idx:], msg)
-	idx += len(msg)
-	copy(p[idx:], g.endOfLine)
-	idx += len(g.endOfLine)
-	return idx, nil
+	nTotal := 0
+	n, err := w.Write(g.rfc3164Prefix)
+	nTotal += n
+	if err != nil {
+		return nTotal, err
+	}
+	n, err = w.Write(msg)
+	nTotal += n
+	if err != nil {
+		return nTotal, err
+	}
+	n, err = w.Write(g.endOfLine)
+	nTotal += n
+	if err != nil {
+		return nTotal, err
+	}
+	return nTotal, nil
 }
 
 // buildRFC3164Prefix returns the static prefix for RFC3164 (up to just before the timestamp)

@@ -90,17 +90,15 @@ func setupSenders(ctx context.Context, wg *sync.WaitGroup) {
 			// )
 			w := bufio.NewWriterSize(sender.Writer, 1<<20)
 			defer w.Flush()
-			buf := make([]byte, 1<<14)
 			for {
 				msg := payloadGenerator.GenerateMessage()
 				if msg == nil {
 					return
 				}
-				n, err := gen.GenerateEvent(buf, time.Now(), msg)
+				_, err := gen.GenerateEvent(w, time.Now(), msg)
 				if err != nil {
 					return
 				}
-				w.Write(buf[:n])
 			}
 		}()
 	}
