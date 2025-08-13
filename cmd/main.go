@@ -79,18 +79,18 @@ func setupSenders(ctx context.Context, wg *sync.WaitGroup) {
 				syslog.RFC5424,
 				syslog.WithEndOfLine([]byte("\n")),
 			)
-			// payloadGenerator := payloadgenerator.NewRandomMessageGenerator(
-			// 	payloadgenerator.WithSequenceGenerator(sequenceGenerator),
-			// 	payloadgenerator.WithMinMaxLength(10, 33),
-			// 	payloadgenerator.WithIncludeSeqInMsg(true),
-			// )
-			payloadGenerator := payloadgenerator.NewIDMessageGenerator(
-				"This is a test syslog message",
-				sequenceGenerator,
+			payloadGenerator := payloadgenerator.NewRandomMessageGenerator(
+				payloadgenerator.WithSequenceGenerator(sequenceGenerator),
+				payloadgenerator.WithMinMaxLength(500, 900),
+				payloadgenerator.WithIncludeSeqInMsg(true),
 			)
-			w := bufio.NewWriterSize(sender.Writer, 1<<14)
+			// payloadGenerator := payloadgenerator.NewIDMessageGenerator(
+			// 	"This is a test syslog message",
+			// 	sequenceGenerator,
+			// )
+			w := bufio.NewWriterSize(sender.Writer, 1<<20)
 			defer w.Flush()
-			buf := make([]byte, 1<<10)
+			buf := make([]byte, 1<<14)
 			for {
 				msg := payloadGenerator.GenerateMessage()
 				if msg == nil {
