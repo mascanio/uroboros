@@ -50,7 +50,7 @@ func main() {
 }
 
 func setupSenders(ctx context.Context, wg *sync.WaitGroup) {
-	sequenceGenerator := sequencegenerator.NewSequenceGenerator(0, 10_000_000)
+	sequenceGenerator := sequencegenerator.NewSequenceGenerator(0, 100_000_000)
 	for range 1 {
 		wg.Add(1)
 		go func() {
@@ -79,6 +79,11 @@ func setupSenders(ctx context.Context, wg *sync.WaitGroup) {
 				syslog.RFC5424,
 				syslog.WithEndOfLine([]byte("\n")),
 			)
+			// payloadGenerator := payloadgenerator.NewRandomMessageGenerator(
+			// 	payloadgenerator.WithSequenceGenerator(sequenceGenerator),
+			// 	payloadgenerator.WithMinMaxLength(10, 33),
+			// 	payloadgenerator.WithIncludeSeqInMsg(true),
+			// )
 			payloadGenerator := payloadgenerator.NewIDMessageGenerator(
 				"This is a test syslog message",
 				sequenceGenerator,
@@ -91,11 +96,11 @@ func setupSenders(ctx context.Context, wg *sync.WaitGroup) {
 				if msg == nil {
 					return
 				}
-				_, err := gen.GenerateEvent(buf, time.Now(), msg)
+				n, err := gen.GenerateEvent(buf, time.Now(), msg)
 				if err != nil {
 					return
 				}
-				w.Write(buf)
+				w.Write(buf[:n])
 			}
 		}()
 	}
@@ -149,7 +154,7 @@ func consumerRFC(ctx context.Context, conn net.Conn, rfc syslog.Format) {
 		nEvents++
 		_ = syslogparser.ParseSyslogMessageRFC5424(scanner.Bytes())
 		// parsed := syslogparser.ParseSyslogMessageRFC5424(scanner.Bytes())
-		// log.Printf("Received syslog message: %s", parsed.Msg)
+		// log.Printf("Received syslog message: %s, %s", parsed.Msg, string(scanner.Bytes()))
 		if time.Since(lastTime) > time.Second {
 			lastTime = time.Now()
 			bytesPerSec := nRead - lastNRead
