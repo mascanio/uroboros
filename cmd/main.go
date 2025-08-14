@@ -19,6 +19,7 @@ import (
 	"github.com/mascanio/uroboros/internal/receiver"
 	"github.com/mascanio/uroboros/internal/sender"
 	sequencegenerator "github.com/mascanio/uroboros/internal/sequence_generator"
+	"golang.org/x/time/rate"
 )
 
 func main() {
@@ -88,21 +89,29 @@ func setupSenders(ctx context.Context, wg *sync.WaitGroup) {
 				syslog.RFC5424,
 				syslog.WithEndOfLine([]byte("\n")),
 			)
-			payloadGenerator := payloadgenerator.NewRandomMessageGenerator(
-				payloadgenerator.WithSequenceGenerator(sequenceGenerator),
-				payloadgenerator.WithFixedLength(300),
-				// payloadgenerator.WithMinMaxLength(500, 900),
-				payloadgenerator.WithIncludeSeqInMsg(true),
-			)
-			// payloadGenerator := payloadgenerator.NewIDMessageGenerator(
-			// 	"seq: 0000166354, thread: 0000, runid: 1755194303, stamp: 2025-08-14T19:58:25 PADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPAD",
-			// 	sequenceGenerator,
+			// payloadGenerator := payloadgenerator.NewRandomMessageGenerator(
+			// 	payloadgenerator.WithSequenceGenerator(sequenceGenerator),
+			// 	payloadgenerator.WithFixedLength(300),
+			// 	// payloadgenerator.WithMinMaxLength(500, 900),
+			// 	payloadgenerator.WithIncludeSeqInMsg(true),
 			// )
-			w := bufio.NewWriterSize(sender.Writer, 1<<20)
+			payloadGenerator := payloadgenerator.NewIDMessageGenerator(
+				"seq: 0000166354, thread: 0000, runid: 1755194303, stamp: 2025-08-14T19:58:25 PADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPAD",
+				sequenceGenerator,
+			)
+			limit := rate.NewLimiter(600, 1)
+			w := bufio.NewWriterSize(sender.Writer, 1<<10)
 			defer w.Flush()
 			for {
 				msg := payloadGenerator.GenerateMessage()
 				if msg == nil {
+					return
+				}
+				if limit.Tokens() < 1.0 {
+					w.Flush()
+				}
+				err = limit.Wait(ctx)
+				if err != nil {
 					return
 				}
 				_, err := gen.GenerateEvent(w, time.Now(), msg)
