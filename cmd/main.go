@@ -3,10 +3,10 @@ package main
 import (
 	"bufio"
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	_ "net/http/pprof"
 	"os/signal"
 	"sync"
@@ -22,11 +22,17 @@ import (
 )
 
 func main() {
-	// Start pprof server
-	go func() {
-		log.Println("pprof listening on :6060")
-		http.ListenAndServe(":6060", nil)
-	}()
+	// Command-line flags
+	senderFlag := flag.Bool("sender", false, "Enable sender")
+	receiverFlag := flag.Bool("receiver", false, "Enable receiver")
+	flag.Parse()
+
+	if !*senderFlag && !*receiverFlag {
+		fmt.Println("Usage: uroboros [-sender] [-receiver]")
+		fmt.Println("  -sender     Enable sender")
+		fmt.Println("  -receiver   Enable receiver")
+		return
+	}
 
 	ctx, cancel := signal.NotifyContext(
 		context.Background(),
@@ -38,13 +44,17 @@ func main() {
 
 	wg := sync.WaitGroup{}
 
-	setupReceivers(ctx, &wg, []receiverConfig{{
-		host:   "localhost",
-		port:   "4444",
-		format: syslog.RFC5424,
-	}})
+	if *receiverFlag {
+		setupReceivers(ctx, &wg, []receiverConfig{{
+			host:   "localhost",
+			port:   "4444",
+			format: syslog.RFC5424,
+		}})
+	}
 
-	setupSenders(ctx, &wg)
+	if *senderFlag {
+		setupSenders(ctx, &wg)
+	}
 
 	wg.Wait()
 }
@@ -74,18 +84,18 @@ func setupSenders(ctx context.Context, wg *sync.WaitGroup) {
 				<-ctx.Done()
 			}()
 
-			// gen := io.LimitReader(&r{ctx}, 1<<20)
 			gen := syslog.NewSyslogGenerator(
 				syslog.RFC5424,
 				syslog.WithEndOfLine([]byte("\n")),
 			)
 			payloadGenerator := payloadgenerator.NewRandomMessageGenerator(
 				payloadgenerator.WithSequenceGenerator(sequenceGenerator),
-				payloadgenerator.WithMinMaxLength(500, 900),
+				payloadgenerator.WithFixedLength(300),
+				// payloadgenerator.WithMinMaxLength(500, 900),
 				payloadgenerator.WithIncludeSeqInMsg(true),
 			)
 			// payloadGenerator := payloadgenerator.NewIDMessageGenerator(
-			// 	"This is a test syslog message",
+			// 	"seq: 0000166354, thread: 0000, runid: 1755194303, stamp: 2025-08-14T19:58:25 PADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPAD",
 			// 	sequenceGenerator,
 			// )
 			w := bufio.NewWriterSize(sender.Writer, 1<<20)
@@ -167,19 +177,6 @@ func consumerRFC(ctx context.Context, conn net.Conn, rfc syslog.Format) {
 	}
 	log.Printf("total read: %s, total events: %d", ByteCountIEC(int64(nRead)), nEvents)
 }
-
-// type r struct{ ctx context.Context }
-//
-// var repeated = slices.Repeat([]byte("a"), 1<<30)
-//
-// func (r *r) Read(p []byte) (n int, err error) {
-// 	select {
-// 	case <-r.ctx.Done():
-// 		return 0, context.Cause(r.ctx)
-// 	default:
-// 	}
-// 	return copy(p, repeated[:len(p)]), nil
-// }
 
 func ByteCountIEC(b int64) string {
 	const unit = 1024
