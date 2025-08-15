@@ -95,12 +95,28 @@ func setupSenders(ctx context.Context, wg *sync.WaitGroup) {
 			// 	// payloadgenerator.WithMinMaxLength(500, 900),
 			// 	payloadgenerator.WithIncludeSeqInMsg(true),
 			// )
-			payloadGenerator := payloadgenerator.NewIDMessageGenerator(
-				"seq: 0000166354, thread: 0000, runid: 1755194303, stamp: 2025-08-14T19:58:25 PADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPADDPAD",
+
+			// payloadGenerator := payloadgenerator.NewIDMessageGenerator(
+			// 	"this is a syslog message",
+			// 	sequenceGenerator,
+			// )
+			//
+
+			luaCode := `
+function generate(seqNo)
+	return "id: " .. seqNo .. " this is a syslog message"
+end
+`
+			payloadGenerator, err := payloadgenerator.NewLuaMessageGenerator(
+				luaCode,
 				sequenceGenerator,
 			)
-			limit := rate.NewLimiter(600, 1)
-			w := bufio.NewWriterSize(sender.Writer, 1<<10)
+			if err != nil {
+				panic(err)
+			}
+			defer payloadGenerator.Finalize()
+			limit := rate.NewLimiter(600000000, 1)
+			w := bufio.NewWriterSize(sender.Writer, 1<<14)
 			defer w.Flush()
 			for {
 				msg := payloadGenerator.GenerateMessage()
